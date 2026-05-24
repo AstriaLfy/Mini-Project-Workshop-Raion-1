@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:workshop1_raion/bloc/product_bloc.dart';
+import 'package:workshop1_raion/bloc/product_event.dart';
+import 'package:workshop1_raion/bloc/product_state.dart';
+import 'package:workshop1_raion/models/product.dart';
 import 'detail_screen.dart';
 
 class HomePage extends StatefulWidget {
@@ -10,17 +15,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  Map<String, bool> likedProducts = {};
 
   final List<Widget> _slides = [
     ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Image.asset('assets/dashboard1.png', fit: BoxFit.cover, width: double.infinity, height: 160),
     ),
-    _PlaceholderSlide(color: Color(0xFF80C4A8), label: 'Promo Harvest Season'),
-    _PlaceholderSlide(color: Color(0xFF4A90D9), label: 'Fresh Vegetables'),
-    _PlaceholderSlide(color: Color(0xFFE8A838), label: 'Organic Fruits'),
-    _PlaceholderSlide(color: Color(0xFF9B59B6), label: 'Daily Farm Deals'),
+    const _PlaceholderSlide(color: Color(0xFF80C4A8), label: 'Promo Harvest Season'),
+    const _PlaceholderSlide(color: Color(0xFF4A90D9), label: 'Fresh Vegetables'),
+    const _PlaceholderSlide(color: Color(0xFFE8A838), label: 'Organic Fruits'),
+    const _PlaceholderSlide(color: Color(0xFF9B59B6), label: 'Daily Farm Deals'),
   ];
 
   @override
@@ -45,7 +49,10 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
-                decoration: InputDecoration(
+                onChanged: (value) {
+                  context.read<ProductBloc>().add(SearchProductsEvent(query: value));
+                },
+                decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search, color: Color(0xFF7BC89B)),
                   hintText: 'Search..',
                   fillColor: Colors.white,
@@ -100,17 +107,47 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
               const Text('Browse Products', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF3D6B4F))),
               const SizedBox(height: 14),
-              Row(children: [
-                _productCard('assets/berries.jpg', 'Berries', 'Lorem ipsum dolor sit a met, consectetur.'),
-                const SizedBox(width: 16),
-                _productCard('assets/tulsi.jpg', 'Tulsi', 'Lorem ipsum dolor sit a met, consectetur.'),
-              ]),
-              const SizedBox(height: 16),
-              Row(children: [
-                _productCard('assets/milk.jpg', 'Milk', 'Lorem ipsum dolor sit a met, consectetur.'),
-                const SizedBox(width: 16),
-                _productCard('assets/tomato.png', 'Tomato', 'Lorem ipsum dolor sit a met, consectetur.'),
-              ]),
+              BlocBuilder<ProductBloc, ProductState>(
+                builder: (context, state) {
+                  if (state is ProductLoadingState) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: CircularProgressIndicator(color: Color(0xFF7BC89B)),
+                      ),
+                    );
+                  }
+                  if (state is ProductLoadedState) {
+                    final products = state.filteredProducts;
+                    if (products.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 32),
+                        child: Center(
+                          child: Text(
+                            'No products found',
+                            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.grey),
+                          ),
+                        ),
+                      );
+                    }
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.83,
+                      ),
+                      itemCount: products.length,
+                      itemBuilder: (context, index) {
+                        return _productCard(context, products[index]);
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
             ],
           ),
         ),
@@ -118,46 +155,45 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _productCard(String imagePath, String title, String desc) {
-    bool liked = likedProducts[title] ?? false;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () async {
-          final result = await Navigator.push<bool>(context,
-            MaterialPageRoute(builder: (_) => DetailScreen(imagePath: imagePath, title: title, description: desc, isLiked: liked)),
-          );
-          if (result != null) setState(() => likedProducts[title] = result);
-        },
-        child: Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFB8DFCA))),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Stack(children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                child: Image.asset(imagePath, width: double.infinity, height: 130, fit: BoxFit.cover),
-              ),
-              Positioned(
-                top: 6, right: 6,
-                child: GestureDetector(
-                  onTap: () => setState(() => likedProducts[title] = !liked),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle),
-                    child: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? Colors.red : Colors.grey, size: 18),
-                  ),
+  Widget _productCard(BuildContext context, Product product) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => DetailScreen(productId: product.id)),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFB8DFCA))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Stack(children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Image.asset(product.imagePath, width: double.infinity, height: 130, fit: BoxFit.cover),
+            ),
+            Positioned(
+              top: 6, right: 6,
+              child: GestureDetector(
+                onTap: () {
+                  context.read<ProductBloc>().add(ToggleLikeEvent(productId: product.id));
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle),
+                  child: Icon(product.isLiked ? Icons.favorite : Icons.favorite_border, color: product.isLiked ? Colors.red : Colors.grey, size: 18),
                 ),
               ),
-            ]),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF3D6B4F))),
-                const SizedBox(height: 4),
-                Text(desc, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
-              ]),
             ),
           ]),
-        ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(product.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF3D6B4F))),
+              const SizedBox(height: 4),
+              Text(product.description, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+        ]),
       ),
     );
   }
